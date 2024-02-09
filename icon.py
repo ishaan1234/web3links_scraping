@@ -12,40 +12,29 @@ timeout_urls = []
 
 def download_logo(url, save_directory):
     try:
-        # Send a GET request to the URL with a timeout of 10 seconds
         response = requests.get(url, timeout=30)
-        
-        # Check if the request was successful
+    
         if response.status_code == 200:
-            # Parse the HTML content
             soup = BeautifulSoup(response.content, 'html.parser')
             
-            # Find the logo image tag
             logo_tag = soup.find('link', rel='icon') or soup.find('link', rel='shortcut icon')
             
             if logo_tag:
-                # Get the URL of the logo image
                 logo_url = logo_tag['href']
                 
-                # Handle relative URLs
                 if not logo_url.startswith('http'):
-                    # Construct absolute URL
                     logo_url = urljoin(url, logo_url)
                 
-                # Download the logo image
                 logo_response = requests.get(logo_url)
                 
                 if logo_response.status_code == 200:
-                    # Create the save directory if it doesn't exist
                     if not os.path.exists(save_directory):
                         os.makedirs(save_directory)
-                    
-                    # Extract the filename from the URL
+        
                     # parsed_url = urlparse(logo_url)
                     filename = url.split('//')[-1].replace('/', '_') + '.ico'
                     cleaned_filename = re.sub(r'[\\/:"*?<>|]', '', filename)
                     
-                    # Save the logo image to the specified directory
                     with open(os.path.join(save_directory, cleaned_filename), 'wb') as f:
                         f.write(logo_response.content)
                         
