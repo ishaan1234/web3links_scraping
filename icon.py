@@ -1,50 +1,81 @@
-import requests
-from bs4 import BeautifulSoup
-# from urllib.parse import urljoin
-from urllib.parse import urlparse, urljoin
 import os
+import json
+from urllib.parse import urlparse
+import requests
 import re
-
-failed_to_download_logos = []
-failed_to_fetch = []
-timeout_urls = []
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin
 
 
-def download_logo(url, save_directory):
+current_directory = os.getcwd()
+def extract_links(data):
+    links = []
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if isinstance(value, str) and value.startswith('http'):
+                links.append(value)
+            else:
+                links.extend(extract_links(value))
+    elif isinstance(data, list):
+        for item in data:
+            links.extend(extract_links(item))
+    return links
+
+def extract_base_links(links):
+    base_links = []
+    for link in links:
+        parsed_link = urlparse(link)
+        base_link = parsed_link.scheme + "://" + parsed_link.netloc
+        if base_link not in base_links:
+            base_links.append(base_link)
+    return base_links
+
+def download_logo(url, save_directory, failed_to_download_logos, failed_to_fetch, timeout_urls, couldnt_find_logo):
     try:
+        # Send a GET request to the URL with a timeout of 10 seconds
         response = requests.get(url, timeout=30)
-    
+        
+        # Check if the request was successful
         if response.status_code == 200:
+            # Parse the HTML content
             soup = BeautifulSoup(response.content, 'html.parser')
             
+            # Find the logo image tag
             logo_tag = soup.find('link', rel='icon') or soup.find('link', rel='shortcut icon')
             
             if logo_tag:
+                # Get the URL of the logo image
                 logo_url = logo_tag['href']
                 
+                # Handle relative URLs
                 if not logo_url.startswith('http'):
+                    # Construct absolute URL
                     logo_url = urljoin(url, logo_url)
                 
+                # Download the logo image
                 logo_response = requests.get(logo_url)
                 
                 if logo_response.status_code == 200:
+                    # Create the save directory if it doesn't exist
                     if not os.path.exists(save_directory):
                         os.makedirs(save_directory)
-        
+                    
+                    # Extract the filename from the URL
                     # parsed_url = urlparse(logo_url)
                     filename = url.split('//')[-1].replace('/', '_') + '.ico'
                     cleaned_filename = re.sub(r'[\\/:"*?<>|]', '', filename)
                     
+                    # Save the logo image to the specified directory
                     with open(os.path.join(save_directory, cleaned_filename), 'wb') as f:
                         f.write(logo_response.content)
                         
                     print(f"Logo downloaded successfully as '{filename}'")
                 else:
-                    print("Failed to download logo")
-                    failed_to_download_logos.append(url)
+                    download_image_2(url, failed_to_download_logos)
+                    
             else:
                 print("No logo found on the page")
-                download_image_2(url)
+                couldnt_find_logo.append(url)
         else:
             print("Failed to fetch webpage")
             failed_to_fetch.append(url)
@@ -55,11 +86,11 @@ def download_logo(url, save_directory):
         timeout_urls.append(url)
         print("Read timed out.")
         
-def download_image_2(url, save_folder="images"):
+def download_image_2(url, failed_to_download_logos=[] , save_folder="images"):
     # Create folder to save images if it doesn't exist
     if not os.path.exists(save_folder):
         os.makedirs(save_folder)
-
+        
     # Fetch webpage HTML
     response = requests.get(url)
     html = response.text
@@ -84,50 +115,44 @@ def download_image_2(url, save_folder="images"):
         print("SVG downloaded:", svg_url)
     else:
         print("No image found on the page.")
+        failed_to_download_logos.append(url)
 
 def download_file_2(url, save_folder):
     response = requests.get(url)
-    filename = os.path.basename(urlparse(url).path)
-    cleaned_filename = re.sub(r'[\\/:"*?<>|]', '', filename)
+    # filename = os.path.basename(urlparse(url).path)
+    filename = url
+    match = re.search('//(.*?)/', filename)
+    cleaned_filename = match.group(1) 
     save_path = os.path.join(save_folder, cleaned_filename)
     with open(save_path, "wb") as f:
         f.write(response.content)
 
-# Example usage:
-# url = "https://api3.org/"  # Replace with the URL of the webpage you want to download the logo from
-import json
+# loop over json files and run code
+def read_json(directory):
+    json_files = [file for file in os.listdir(directory) if file.endswith('.json')]
+    for json_file in json_files:
+        failed_to_download_logos = []
+        failed_to_fetch = []
+        timeout_urls = []  
+        couldnt_find_logo = [] 
+        
+        with open(json_file, 'r') as f:
+            data = json.load(f)
 
-# Load the JSON file
-with open('your_file.json', 'r') as f:
-    data = json.load(f)
+        all_links = extract_links(data)
 
-# Function to extract links from a dictionary
-def extract_links(data):
-    links = []
-    if isinstance(data, dict):
-        for key, value in data.items():
-            if isinstance(value, str) and value.startswith('http'):
-                links.append(value)
-            else:
-                links.extend(extract_links(value))
-    elif isinstance(data, list):
-        for item in data:
-            links.extend(extract_links(item))
-    return links
+        base_links = extract_base_links(all_links)
+        unique_links = list(set(base_links))
+        print(unique_links)
+        # Download logos for each unique link
+        save_directory = "logo_images"   
+        for url in unique_links:
+            download_logo(url, save_directory, failed_to_download_logos, failed_to_fetch, timeout_urls, couldnt_find_logo)
 
-# Extract links from the JSON data
-all_links = extract_links(data)
-
-# Remove duplicates
-unique_links = list(set(all_links))
-
-# Print the unique links
-print(unique_links)
-
-
-save_directory = "logo_images"    # Directory to save the downloaded logo
-for url in unique_links:
-    download_logo(url, save_directory)
-
-print("Failed to download logos from the following URLs:", failed_to_download_logos)
-print("Failed to fetch the following URLs:", failed_to_fetch)
+        print("Failed to download logos from the following URLs:", failed_to_download_logos)
+        print("Could not find logo for the following URLs:", couldnt_find_logo)
+        print("Failed to fetch the following URLs:", failed_to_fetch)
+        print("Connection timeout for the following URLs:", timeout_urls)
+        
+    
+read_json(current_directory)
