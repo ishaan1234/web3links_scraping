@@ -30,7 +30,7 @@ def extract_base_links(links):
             base_links.append(base_link)
     return base_links
 
-def download_logo(url, save_directory, failed_to_download_logos, failed_to_fetch, timeout_urls, couldnt_find_logo):
+def download_logo(url, save_directory, failed_to_download_logos, failed_to_fetch, timeout_urls, couldnt_find_logo, other_errors=[]):
     try:
         # Send a GET request to the URL with a timeout of 10 seconds
         response = requests.get(url, timeout=30)
@@ -85,6 +85,9 @@ def download_logo(url, save_directory, failed_to_download_logos, failed_to_fetch
     except requests.exceptions.ReadTimeout:
         timeout_urls.append(url)
         print("Read timed out.")
+    except requests.exceptions.ConnectionError:
+        print(f"Connection error for URL: {url}")
+        other_errors.append(url)
         
 def download_image_2(url, failed_to_download_logos=[] , save_folder="images"):
     # Create folder to save images if it doesn't exist
@@ -131,10 +134,12 @@ def download_file_2(url, save_folder):
 def read_json(directory):
     json_files = [file for file in os.listdir(directory) if file.endswith('.json')]
     for json_file in json_files:
+        print(f"Processing file: {json_file}")
         failed_to_download_logos = []
         failed_to_fetch = []
         timeout_urls = []  
         couldnt_find_logo = [] 
+        other_errors = []
         
         with open(json_file, 'r') as f:
             data = json.load(f)
@@ -153,6 +158,7 @@ def read_json(directory):
         print("Could not find logo for the following URLs:", couldnt_find_logo)
         print("Failed to fetch the following URLs:", failed_to_fetch)
         print("Connection timeout for the following URLs:", timeout_urls)
+        print("Other errors:", other_errors)
         
     
 read_json(current_directory)
